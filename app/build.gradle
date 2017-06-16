@@ -1,0 +1,117 @@
+apply plugin: 'com.android.application'
+
+
+import com.android.annotations.NonNull
+import com.android.build.api.transform.*
+import org.apache.commons.io.FileUtils
+
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+
+public class MyTransform extends Transform {
+
+    @Override
+    public String getName() {
+        return "MyTransformImpl";
+    }
+
+    @Override
+    public Set<QualifiedContent.ContentType> getInputTypes() {
+        Set<QualifiedContent.ContentType> set = new HashSet<QualifiedContent.ContentType>();
+        set.add(QualifiedContent.DefaultContentType.CLASSES);
+        return set;
+    }
+
+    @Override
+    public Set<QualifiedContent.Scope> getScopes() {
+        Set<QualifiedContent.Scope> set = new HashSet<QualifiedContent.Scope>();
+        set.add(QualifiedContent.Scope.EXTERNAL_LIBRARIES);
+        return set;
+    }
+
+    @Override
+    public boolean isIncremental() {
+        return false;
+    }
+
+    @Override
+    void transform(
+            @NonNull TransformInvocation transformInvocation) throws TransformException, InterruptedException, IOException {
+        transformInvocation.inputs.each {
+            it.jarInputs.each {
+                def jarName = it.name
+                def src = it.getFile()
+                def dest = transformInvocation.outputProvider.getContentLocation(jarName,
+                        it.contentTypes, it.scopes,
+                        Format.JAR);
+                def status = it.getStatus()
+                if (status == Status.REMOVED) {
+                    FileUtils.delete(dest)
+                } else if (!isIncremental() || status != Status.NOTCHANGED) { // ❷
+                    FileUtils.copyFile(src, dest)
+
+                    def isFoundSupportV4 = false;
+                    def targetFile = ""
+                    def zip = new ZipFile(src)
+                    zip.entries().findAll { !it.directory && it.name.contains("SimpleArrayMap") }.each { e ->
+                        isFoundSupportV4 = true;
+                        targetFile = e.name;
+                    }
+                    if( isFoundSupportV4) {
+                        def modFile = new File("fix/SimpleArrayMap.class");
+
+                        println "found v4. ${targetFile} ${dest}"
+
+                        def zin = new ZipFile(src)
+                        def tmp = dest
+                        tmp.withOutputStream { os ->
+                            def zos = new ZipOutputStream(os)
+                            zin.entries().each { entry ->
+                                def isReplaced = entry.name == targetFile
+                                zos.putNextEntry(isReplaced ? new ZipEntry(targetFile) : entry)
+                                zos << (isReplaced ? new FileInputStream(modFile).bytes : zin.getInputStream(entry).bytes )
+                                zos.closeEntry()
+                            }
+                            zos.close()
+                        }
+                        zin.close()
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+android {
+    compileSdkVersion 25
+    buildToolsVersion "25.0.3"
+    defaultConfig {
+        applicationId "allstar.wychi.arraymapfix"
+        minSdkVersion 16
+        targetSdkVersion 25
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // Note: turn on/off this to see if the fix work
+    registerTransform(new MyTransform())
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
+        exclude group: 'com.android.support', module: 'support-annotations'
+    })
+    testCompile 'junit:junit:4.12'
+
+    compile "com.android.support:support-compat:25.3.1"
+}
