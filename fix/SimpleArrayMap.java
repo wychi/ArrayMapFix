@@ -134,8 +134,7 @@ public class SimpleArrayMap<K, V> {
         return ~end;
     }
 
-    private void allocArrays(final int size) {
-        Log.d(TAG, "hook allocArrays");
+    private void allocArrays1(final int size) {
         if (size == (BASE_SIZE*2)) {
             synchronized (ArrayMap.class) {
                 if (mTwiceBaseCache != null) {
@@ -170,7 +169,7 @@ public class SimpleArrayMap<K, V> {
         mArray = new Object[size<<1];
     }
 
-    private static void freeArrays(final int[] hashes, final Object[] array, final int size) {
+    private static void freeArrays1(final int[] hashes, final Object[] array, final int size) {
         if (hashes.length == (BASE_SIZE*2)) {
             synchronized (ArrayMap.class) {
                 if (mTwiceBaseCacheSize < CACHE_SIZE) {
@@ -415,12 +414,10 @@ public class SimpleArrayMap<K, V> {
             System.arraycopy(mArray, index << 1, mArray, (index + 1) << 1, (mSize - index) << 1);
         }
 
-        synchronized (ArrayMap.class) {
-            mHashes[index] = hash;
-            mArray[index << 1] = key;
-            mArray[(index << 1) + 1] = value;
-            mSize++;
-        }
+        mHashes[index] = hash;
+        mArray[index<<1] = key;
+        mArray[(index<<1)+1] = value;
+        mSize++;
         return null;
     }
 
@@ -640,4 +637,13 @@ public class SimpleArrayMap<K, V> {
         buffer.append('}');
         return buffer.toString();
     }
+
+    private void allocArrays(final int size) {
+        mHashes = new int[size];
+        mArray = new Object[size<<1];
+    }
+
+    private static void freeArrays(final int[] hashes, final Object[] array, final int size) {
+    }
 }
+
