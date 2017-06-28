@@ -31,6 +31,7 @@ import java.util.Map;
 public class SimpleArrayMap<K, V> {
     private static final boolean DEBUG = false;
     private static final String TAG = "ArrayMap";
+    private static final boolean CMS_DEBUG = false;
 
     /**
      * The minimum amount by which the capacity of a ArrayMap will increase.
@@ -134,11 +135,25 @@ public class SimpleArrayMap<K, V> {
         return ~end;
     }
 
-    private void allocArrays1(final int size) {
+    private void allocArrays(final int size) {
+        if(CMS_DEBUG) {
+            dumpStack("alloc size=" + size);
+        }
+
         if (size == (BASE_SIZE*2)) {
             synchronized (ArrayMap.class) {
                 if (mTwiceBaseCache != null) {
                     final Object[] array = mTwiceBaseCache;
+                    // Note: Drop cache. It is corrupted
+                    if(!(array[0] instanceof Object[])) {
+                        mHashes = new int[size];
+                        mArray = new Object[size<<1];
+                        if(CMS_DEBUG) {
+                            dumpStack("(alloc) mTwiceBaseCache corrupted " + array[0]);
+                        }
+                        return;
+                    }
+
                     mArray = array;
                     mTwiceBaseCache = (Object[])array[0];
                     mHashes = (int[])array[1];
@@ -153,6 +168,16 @@ public class SimpleArrayMap<K, V> {
             synchronized (ArrayMap.class) {
                 if (mBaseCache != null) {
                     final Object[] array = mBaseCache;
+                    // Note: Drop cache. It is corrupted
+                    if(!(array[0] instanceof Object[])) {
+                        mHashes = new int[size];
+                        mArray = new Object[size<<1];
+                        if(CMS_DEBUG) {
+                            dumpStack("(alloc) mBaseCache corrupted " + array[0]);
+                        }
+                        return;
+                    }
+
                     mArray = array;
                     mBaseCache = (Object[])array[0];
                     mHashes = (int[])array[1];
@@ -169,7 +194,7 @@ public class SimpleArrayMap<K, V> {
         mArray = new Object[size<<1];
     }
 
-    private static void freeArrays1(final int[] hashes, final Object[] array, final int size) {
+    private static void freeArrays(final int[] hashes, final Object[] array, final int size) {
         if (hashes.length == (BASE_SIZE*2)) {
             synchronized (ArrayMap.class) {
                 if (mTwiceBaseCacheSize < CACHE_SIZE) {
@@ -199,13 +224,22 @@ public class SimpleArrayMap<K, V> {
                 }
             }
         }
+
+        if(CMS_DEBUG && mTwiceBaseCacheSize > 0 && !(mTwiceBaseCache[0] instanceof Object[])) {
+            dumpStack("(free) mTwiceBaseCache corrupted " + mTwiceBaseCache[0]);
+        }
+        if(CMS_DEBUG && mBaseCacheSize > 0 && !(mBaseCache[0] instanceof Object[])) {
+            dumpStack("(free)  mBaseCacheSize corrupted " + mBaseCache[0]);
+        }
     }
 
+    long tid = -1;
     /**
      * Create a new empty ArrayMap.  The default capacity of an array map is 0, and
      * will grow once items are added to it.
      */
     public SimpleArrayMap() {
+        tid = Thread.currentThread().getId();
         mHashes = ContainerHelpers.EMPTY_INTS;
         mArray = ContainerHelpers.EMPTY_OBJECTS;
         mSize = 0;
@@ -215,6 +249,7 @@ public class SimpleArrayMap<K, V> {
      * Create a new ArrayMap with a given initial capacity.
      */
     public SimpleArrayMap(int capacity) {
+        tid = Thread.currentThread().getId();
         if (capacity == 0) {
             mHashes = ContainerHelpers.EMPTY_INTS;
             mArray = ContainerHelpers.EMPTY_OBJECTS;
@@ -371,6 +406,9 @@ public class SimpleArrayMap<K, V> {
      * was no such key.
      */
     public V put(K key, V value) {
+//        if(CMS_DEBUG && tid != Thread.currentThread().getId()) {
+//            dumpStack("put called in different threads " + tid + " " + Thread.currentThread().getId());
+//        }
         final int hash;
         int index;
         if (key == null) {
@@ -638,12 +676,23 @@ public class SimpleArrayMap<K, V> {
         return buffer.toString();
     }
 
-    private void allocArrays(final int size) {
-        mHashes = new int[size];
-        mArray = new Object[size<<1];
+    private static void dumpStack(String reason) {
+        StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+        int depth = Math.min(elements.length, 10);
+        Log.d(TAG, reason);
+        for(int i=4; i< depth; i++) {
+            Log.d(TAG, elements[i].toString());
+        }
+        Log.d(TAG, "====");
+
     }
 
-    private static void freeArrays(final int[] hashes, final Object[] array, final int size) {
-    }
+//    private void allocArrays(final int size) {
+//        mHashes = new int[size];
+//        mArray = new Object[size<<1];
+//    }
+//
+//    private static void freeArrays(final int[] hashes, final Object[] array, final int size) {
+//    }
 }
 

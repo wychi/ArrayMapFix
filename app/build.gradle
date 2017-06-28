@@ -59,7 +59,7 @@ public class MyTransform extends Transform {
                         targetFile = e.name;
                     }
                     if( isFoundSupportV4) {
-                        def modFile = new File("fix/SimpleArrayMap.class");
+                        def modFile = new File("fix/SimpleArrayMap.class.debug");
 
                         println "found v4. ${targetFile} ${dest}"
 
